@@ -171,7 +171,7 @@ function getWebviewsConfig(env) {
 		}),
 		new HtmlPlugin({
 			excludeAssets: [/.+-styles\.js/],
-			excludeChunks: ['welcome'],
+			excludeChunks: ['timeline', 'timeline-styles', 'welcome'],
 			template: 'settings/index.html',
 			filename: path.resolve(__dirname, 'dist/webviews/settings.html'),
 			inject: true,
@@ -199,7 +199,34 @@ function getWebviewsConfig(env) {
 		}),
 		new HtmlPlugin({
 			excludeAssets: [/.+-styles\.js/],
-			excludeChunks: ['settings'],
+			excludeChunks: ['main-styles', 'settings', 'welcome'],
+			template: 'timeline/index.html',
+			filename: path.resolve(__dirname, 'dist/webviews/timeline.html'),
+			inject: true,
+			cspPlugin: {
+				enabled: true,
+				policy: cspPolicy,
+				nonceEnabled: {
+					'script-src': true,
+					'style-src': true
+				}
+			},
+			minify: env.production
+				? {
+						removeComments: true,
+						collapseWhitespace: true,
+						removeRedundantAttributes: true,
+						useShortDoctype: true,
+						removeEmptyAttributes: true,
+						removeStyleLinkTypeAttributes: true,
+						keepClosingSlash: true,
+						minifyCSS: true
+				  }
+				: false
+		}),
+		new HtmlPlugin({
+			excludeAssets: [/.+-styles\.js/],
+			excludeChunks: ['timeline', 'timeline-styles', 'settings'],
 			template: 'welcome/index.html',
 			filename: path.resolve(__dirname, 'dist/webviews/welcome.html'),
 			inject: true,
@@ -252,7 +279,9 @@ function getWebviewsConfig(env) {
 		context: path.resolve(__dirname, 'src/webviews/apps'),
 		entry: {
 			'main-styles': ['./scss/main.scss'],
+			'timeline-styles': ['./scss/timeline.scss'],
 			settings: ['./settings/index.ts'],
+			timeline: ['./timeline/index.ts'],
 			welcome: ['./welcome/index.ts']
 		},
 		mode: env.production ? 'production' : 'development',
