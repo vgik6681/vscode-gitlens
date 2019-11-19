@@ -150,10 +150,12 @@ export namespace Hovers {
 			dateFormat = 'MMMM Do, YYYY h:mma';
 		}
 
-		const [presence, previousLineDiffUris, remotes] = await Promise.all([
-			Container.vsls.maybeGetPresence(commit.email).catch(reason => undefined),
+		const remotes = await Container.git.getRemotes(commit.repoPath, { sort: true });
+
+		const [previousLineDiffUris, pr, presence] = await Promise.all([
 			commit.isUncommitted ? commit.getPreviousLineDiffUris(uri, editorLine, uri.sha) : undefined,
-			Container.git.getRemotes(commit.repoPath, { sort: true })
+			Container.git.getPullRequestForCommit(commit.ref, remotes),
+			Container.vsls.maybeGetPresence(commit.email).catch(reason => undefined)
 		]);
 
 		const details = CommitFormatter.fromTemplate(Container.config.hovers.detailsMarkdownFormat, commit, {
@@ -161,6 +163,7 @@ export namespace Hovers {
 			dateFormat: dateFormat,
 			line: editorLine,
 			markdown: true,
+			pr: pr,
 			presence: presence,
 			previousLineDiffUris: previousLineDiffUris,
 			remotes: remotes
