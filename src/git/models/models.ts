@@ -1,6 +1,15 @@
 'use strict';
-
 import { Git } from '../git';
+
+export namespace GitRevision {
+	export function createRange(
+		ref1: string | undefined,
+		ref2: string | undefined,
+		notation: '..' | '...' = '..'
+	): string {
+		return `${ref1 || ''}${notation}${ref2 || ''}`;
+	}
+}
 
 export interface GitReference {
 	readonly refType: 'branch' | 'tag' | 'revision';
@@ -30,6 +39,7 @@ export * from './diff';
 export * from './file';
 export * from './log';
 export * from './logCommit';
+export * from './pullRequest';
 export * from './remote';
 export * from './repository';
 export * from './reflog';

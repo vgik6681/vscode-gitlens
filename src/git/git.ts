@@ -118,6 +118,10 @@ export async function git<TOut extends string | Buffer>(options: GitCommandOptio
 			...(configs !== undefined ? configs : emptyArray)
 		);
 
+		if (process.platform === 'win32') {
+			args.splice(0, 0, '-c', 'core.longpaths=true');
+		}
+
 		promise = run<TOut>(gitInfo.path, args, encoding, runOpts);
 
 		pendingCommands.set(command, promise);
@@ -623,7 +627,7 @@ export namespace Git {
 			params.push(ref2);
 		}
 
-		return git<string>({ cwd: repoPath, configs: ['-c', 'color.diff=false'] }, ...params);
+		return git<string>({ cwd: repoPath, configs: ['-c', 'color.diff=false'] }, ...params, '--');
 	}
 
 	export function diff__shortstat(repoPath: string, ref?: string) {
@@ -632,7 +636,7 @@ export namespace Git {
 			params.push(ref);
 		}
 
-		return git<string>({ cwd: repoPath, configs: ['-c', 'color.diff=false'] }, ...params);
+		return git<string>({ cwd: repoPath, configs: ['-c', 'color.diff=false'] }, ...params, '--');
 	}
 
 	export function difftool(
@@ -975,7 +979,7 @@ export namespace Git {
 		}
 		params.push(...refs);
 
-		const data = await git<string>({ cwd: repoPath, errors: GitErrorHandling.Ignore }, 'rev-list', ...params);
+		const data = await git<string>({ cwd: repoPath, errors: GitErrorHandling.Ignore }, 'rev-list', ...params, '--');
 		return data.length === 0 ? undefined : Number(data.trim()) || undefined;
 	}
 

@@ -25,7 +25,18 @@ import { CommandContext, DocumentSchemes, setCommandContext } from '../constants
 import { Container } from '../container';
 import { LogCorrelationContext, Logger } from '../logger';
 import { Messages } from '../messages';
-import { Arrays, debug, gate, Iterables, log, Objects, Strings, TernarySearchTree, Versions } from '../system';
+import {
+	Arrays,
+	debug,
+	gate,
+	Iterables,
+	log,
+	Objects,
+	Promises,
+	Strings,
+	TernarySearchTree,
+	Versions
+} from '../system';
 import { CachedBlame, CachedDiff, CachedLog, GitDocumentState, TrackedDocument } from '../trackers/gitDocumentTracker';
 import { vslsUriPrefixRegex } from '../vsls/vsls';
 import {
@@ -73,6 +84,7 @@ import { GitUri } from './gitUri';
 import { RemoteProviderFactory, RemoteProviders } from './remotes/factory';
 import { GitReflogParser, GitShortLogParser } from './parsers/parsers';
 import { isWindows } from './shell';
+import { PullRequest, PullRequestDateFormatting } from './models/models';
 
 export * from './gitUri';
 export * from './models/models';
@@ -80,6 +92,7 @@ export * from './formatters/formatters';
 export * from './remotes/provider';
 export { RemoteProviderFactory } from './remotes/factory';
 
+const emptyArray = (Object.freeze([]) as any) as any[];
 const emptyStr = '';
 const slash = '/';
 
@@ -96,6 +109,13 @@ const searchOperationRegex = /((?:=|message|@|author|#|commit|\?|file|~|change):
 
 const emptyPromise: Promise<GitBlame | GitDiff | GitLog | undefined> = Promise.resolve(undefined);
 const reflogCommands = ['merge', 'pull'];
+
+export interface PullRequestInfo {
+	ref: string;
+	timeout?: boolean;
+	item: PullRequest | undefined;
+	remote: GitRemote | undefined;
+}
 
 export type SearchOperators =
 	| ''
@@ -253,6 +273,7 @@ export class GitService implements Disposable {
 		) {
 			BranchDateFormatting.reset();
 			CommitDateFormatting.reset();
+			PullRequestDateFormatting.reset();
 		}
 	}
 
@@ -1258,7 +1279,21 @@ export class GitService implements Disposable {
 
 		const data = await Git.shortlog(repoPath);
 		const shortlog = GitShortLogParser.parse(data, repoPath);
-		return shortlog === undefined ? [] : shortlog.contributors;
+		if (shortlog == null) return [];
+
+		// Mark the current user
+		const currentUser = await Container.git.getCurrentUser(repoPath);
+		if (currentUser != null) {
+			const index = shortlog.contributors.findIndex(
+				c => currentUser.email === c.email && currentUser.name === c.name
+			);
+			if (index !== -1) {
+				const c = shortlog.contributors[index];
+				shortlog.contributors.splice(index, 1, new GitContributor(c.repoPath, c.name, c.email, c.count, true));
+			}
+		}
+
+		return shortlog.contributors;
 	}
 
 	@log()
@@ -2315,6 +2350,75 @@ export class GitService implements Disposable {
 		if (ref !== undefined && ref === previousRef) return undefined;
 
 		return GitUri.fromFile(file || fileName, repoPath, previousRef || GitService.deletedOrMissingSha);
+	}
+
+	async getPullRequestForCommit(
+		ref: string,
+		remotes: GitRemote[],
+		{ timeout = 50 }: { timeout?: number } = {}
+	): Promise<PullRequestInfo | undefined> {
+		if (
+			!Container.config.pullRequests.enabled ||
+			(remotes != null && remotes.length === 0) ||
+			Git.isUncommitted(ref)
+		) {
+			return undefined;
+		}
+
+		const pr: PullRequestInfo = {
+			ref: ref,
+			item: undefined,
+			remote: undefined
+		};
+
+		const prs: Promise<[PullRequest | undefined, GitRemote]>[] = [];
+
+		let foundConnectedDefaultSkipOthers = false;
+		for (const remote of GitRemote.sort(remotes)) {
+			if (!remote.provider?.hasApi()) continue;
+
+			if (!(await remote.provider.isConnected())) {
+				if (pr.remote == null) {
+					pr.remote = remote;
+				}
+				continue;
+			}
+
+			if (!foundConnectedDefaultSkipOthers) {
+				if (remote.default) {
+					foundConnectedDefaultSkipOthers = true;
+				}
+
+				const requestOrPR = remote.provider.getPullRequestForCommit(ref);
+				if (requestOrPR == null || !Promises.is(requestOrPR)) {
+					pr.item = requestOrPR;
+					pr.remote = requestOrPR !== undefined ? remote : undefined;
+					break;
+				}
+				prs.push(requestOrPR.then(pr => [pr, remote]));
+			} else if (pr.remote !== undefined) {
+				break;
+			}
+		}
+
+		if (prs.length !== 0) {
+			pr.remote = undefined;
+			try {
+				[pr.item, pr.remote] =
+					(await Promises.cancellable(
+						Promises.first(prs, ([pr]) => pr != null),
+						timeout,
+						{
+							onDidCancel: resolve => {
+								pr.timeout = true;
+								resolve(undefined);
+							}
+						}
+					)) ?? emptyArray;
+			} catch {}
+		}
+
+		return pr;
 	}
 
 	@log()

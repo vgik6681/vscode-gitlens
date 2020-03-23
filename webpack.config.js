@@ -7,6 +7,7 @@ const BundleAnalyzerPlugin = require('webpack-bundle-analyzer').BundleAnalyzerPl
 const { CleanWebpackPlugin: CleanPlugin } = require('clean-webpack-plugin');
 const CircularDependencyPlugin = require('circular-dependency-plugin');
 const CspHtmlPlugin = require('csp-html-webpack-plugin');
+// const ESLintPlugin = require('eslint-webpack-plugin');
 const ForkTsCheckerPlugin = require('fork-ts-checker-webpack-plugin');
 const HtmlExcludeAssetsPlugin = require('html-webpack-exclude-assets-plugin');
 const HtmlInlineSourcePlugin = require('html-webpack-inline-source-plugin');
@@ -26,6 +27,21 @@ module.exports = function(env, argv) {
 		env.optimizeImages = true;
 	}
 
+	// TODO: Total and complete HACK until the following issue is resolved
+	// https://github.com/gr2m/universal-user-agent/issues/23
+
+	const packageJSON = path.resolve(__dirname, 'node_modules/universal-user-agent/package.json');
+	if (fs.existsSync(packageJSON)) {
+		// eslint-disable-next-line import/no-dynamic-require
+		const uua = require(packageJSON);
+		console.log(uua.module);
+		if (uua.module !== 'dist-node/index.js') {
+			console.log("Rewrote universal-user-agent's package.json module field to `dist-node/index.js`");
+			uua.module = 'dist-node/index.js';
+			fs.writeFileSync(packageJSON, `${JSON.stringify(uua, undefined, 4)}\n`, 'utf8');
+		}
+	}
+
 	return [getExtensionConfig(env), getWebviewsConfig(env)];
 };
 
@@ -35,9 +51,15 @@ function getExtensionConfig(env) {
 	 */
 	const plugins = [
 		new CleanPlugin({ cleanOnceBeforeBuildPatterns: ['**/*', '!**/webviews/**'] }),
+		// new ESLintPlugin({
+		// 	context: path.resolve(__dirname, 'src'),
+		// 	files: '**/*.ts',
+		// 	lintDirtyModulesOnly: true
+		// })
 		new ForkTsCheckerPlugin({
 			async: false,
-			eslint: true
+			eslint: true,
+			useTypescriptIncrementalApi: true
 		})
 	];
 
@@ -71,7 +93,8 @@ function getExtensionConfig(env) {
 		devtool: 'source-map',
 		output: {
 			libraryTarget: 'commonjs2',
-			filename: 'extension.js'
+			filename: 'extension.js',
+			chunkFilename: 'feature-[name].js'
 		},
 		optimization: {
 			minimizer: [
@@ -87,7 +110,13 @@ function getExtensionConfig(env) {
 						module: true
 					}
 				})
-			]
+			],
+			splitChunks: {
+				cacheGroups: {
+					vendors: false
+				},
+				chunks: 'async'
+			}
 		},
 		externals: {
 			vscode: 'commonjs vscode'
@@ -95,7 +124,8 @@ function getExtensionConfig(env) {
 		module: {
 			rules: [
 				{
-					exclude: /node_modules|\.d\.ts$/,
+					exclude: /\.d\.ts$/,
+					include: path.resolve(__dirname, 'src'),
 					test: /\.tsx?$/,
 					use: {
 						loader: 'ts-loader',
@@ -108,7 +138,11 @@ function getExtensionConfig(env) {
 			]
 		},
 		resolve: {
-			extensions: ['.ts', '.tsx', '.js', '.jsx', '.json']
+			// alias: {
+			// 	'universal-user-agent': 'node_modules/universal-user-agent/dist-node/index.js'
+			// }
+			extensions: ['.ts', '.tsx', '.js', '.jsx', '.json'],
+			symlinks: false
 		},
 		plugins: plugins,
 		stats: {
@@ -146,10 +180,16 @@ function getWebviewsConfig(env) {
 	 */
 	const plugins = [
 		new CleanPlugin({ cleanOnceBeforeBuildPatterns: clean }),
+		// new ESLintPlugin({
+		// 	context: path.resolve(__dirname, 'src/webviews/apps'),
+		// 	files: '**/*.ts',
+		// 	lintDirtyModulesOnly: true
+		// }),
 		new ForkTsCheckerPlugin({
 			tsconfig: path.resolve(__dirname, 'tsconfig.webviews.json'),
 			async: false,
-			eslint: true
+			eslint: true,
+			useTypescriptIncrementalApi: true
 		}),
 		new MiniCssExtractPlugin({
 			filename: '[name].css'
@@ -250,12 +290,14 @@ function getWebviewsConfig(env) {
 		module: {
 			rules: [
 				{
-					exclude: /node_modules|\.d\.ts$/,
+					exclude: /\.d\.ts$/,
+					include: path.resolve(__dirname, 'src'),
 					test: /\.tsx?$/,
 					use: {
 						loader: 'ts-loader',
 						options: {
 							configFile: 'tsconfig.webviews.json',
+							experimentalWatchApi: true,
 							transpileOnly: true
 						}
 					}
@@ -286,7 +328,8 @@ function getWebviewsConfig(env) {
 		},
 		resolve: {
 			extensions: ['.ts', '.tsx', '.js', '.jsx', '.json'],
-			modules: [path.resolve(__dirname, 'src/webviews/apps'), 'node_modules']
+			modules: [path.resolve(__dirname, 'src/webviews/apps'), 'node_modules'],
+			symlinks: false
 		},
 		plugins: plugins,
 		stats: {

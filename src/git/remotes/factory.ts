@@ -7,9 +7,9 @@ import { BitbucketServerRemote } from './bitbucket-server';
 import { CustomRemote } from './custom';
 import { GitHubRemote } from './github';
 import { GitLabRemote } from './gitlab';
-import { RemoteProvider } from './provider';
+import { RemoteProvider, RemoteProviderWithApi } from './provider';
 
-export { RemoteProvider };
+export { RemoteProvider, RemoteProviderWithApi };
 export type RemoteProviders = [string | RegExp, (domain: string, path: string) => RemoteProvider][];
 
 const defaultProviders: RemoteProviders = [
